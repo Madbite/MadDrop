@@ -1,0 +1,26 @@
+[project]
+name = "maddrop"
+version = "0.1.0"
+description = "Direct, secure file sharing between nearby devices."
+requires-python = ">=3.11"
+dependencies = [
+    "cryptography>=42.0",
+    "pyside6>=6.7",
+    "zeroconf>=0.132",
+]
+
+[project.optional-dependencies]
+windows-build = ["pyinstaller>=6.11"]
+
+[project.scripts]
+maddrop = "maddrop.app:main"
+
+[build-system]
+requires = ["uv_build>=0.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = true
+
+[tool.uv.build-backend]
+module-root = "src"
