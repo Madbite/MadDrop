@@ -63,7 +63,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "${{ github.ref_name }}"
-          $files = @(Get-ChildItem "dist\installer\MadDrop-Setup-*.exe" | Select-Object -ExpandProperty FullName)
+          # Match every installer, including the stable MadDrop-Setup.exe copy:
+          # the pattern "MadDrop-Setup-*.exe" needs a dash and would skip it.
+          $files = @(Get-ChildItem "dist\installer\*.exe" | Select-Object -ExpandProperty FullName)
+          $files | ForEach-Object { Write-Host "Uploading $_" }
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag @files --clobber

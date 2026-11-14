@@ -34,7 +34,7 @@ python -m pip install -e ".[windows-build]"
 .\scripts\build_windows.ps1
 ```
 
-The installer is created at `dist\installer\MadDrop-Setup-0.2.0.exe`. The portable app folder is `dist\MadDrop`. To create only the portable folder without Inno Setup, run `.\scripts\build_windows.ps1 -PortableOnly`.
+The installer is created at `dist\installer\MadDrop-Setup-0.2.1.exe`. The portable app folder is `dist\MadDrop`. To create only the portable folder without Inno Setup, run `.\scripts\build_windows.ps1 -PortableOnly`.
 
 The setup is unsigned, so Windows SmartScreen may show a warning during testing. Windows may also ask you to allow MadDrop on private networks. Allow it only for a network you trust; discovery needs local multicast, and transfers need an inbound TCP connection. Public-network access is not required.
 
@@ -43,8 +43,8 @@ The setup is unsigned, so Windows SmartScreen may show a warning during testing.
 Bump `version` in `pyproject.toml`, `src/maddrop/__init__.py` and `AppVersion` in `scripts/MadDrop.iss`, then push a matching tag:
 
 ```powershell
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 The workflow runs the tests, builds `dist\MadDrop` with PyInstaller, compiles the installer with Inno Setup, and attaches both the versioned and the stable `MadDrop-Setup.exe` to the release.
