@@ -2,6 +2,15 @@
 
 MadDrop is a native PySide6 desktop app for discovering nearby devices and sending files directly over a local network. Discovery uses mDNS; file contents travel over a TLS-encrypted connection between the two devices. The recipient must accept each transfer before file data is sent. No account, cloud storage, or external service is used.
 
+## Download
+
+Every release is built by `.github/workflows/release.yml` on a Windows runner and attached to the GitHub release.
+
+- Releases page: `https://github.com/Madbite/MadDrop/releases/latest`
+- Permanent link for a website download button: `https://github.com/Madbite/MadDrop/releases/latest/download/MadDrop-Setup.exe`
+
+The second URL always serves the newest published release, so a download button on a website can point at it once and never needs updating. The versioned installer (`MadDrop-Setup-<version>.exe`) is attached to the same release for direct links.
+
 ## Branding
 
 The desktop app uses the supplied MadDrop mark and its electric-blue `#006FFF` on a near-black palette. The cropped transparent app logo and Windows icon are in `src/maddrop/assets/`.
@@ -25,9 +34,20 @@ python -m pip install -e ".[windows-build]"
 .\scripts\build_windows.ps1
 ```
 
-The installer is created at `dist\installer\MadDrop-Setup-0.1.0.exe`. The portable app folder is `dist\MadDrop`. To create only the portable folder without Inno Setup, run `.\scripts\build_windows.ps1 -PortableOnly`.
+The installer is created at `dist\installer\MadDrop-Setup-0.2.0.exe`. The portable app folder is `dist\MadDrop`. To create only the portable folder without Inno Setup, run `.\scripts\build_windows.ps1 -PortableOnly`.
 
 The setup is unsigned, so Windows SmartScreen may show a warning during testing. Windows may also ask you to allow MadDrop on private networks. Allow it only for a network you trust; discovery needs local multicast, and transfers need an inbound TCP connection. Public-network access is not required.
+
+## Publishing a release
+
+Bump `version` in `pyproject.toml`, `src/maddrop/__init__.py` and `AppVersion` in `scripts/MadDrop.iss`, then push a matching tag:
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow runs the tests, builds `dist\MadDrop` with PyInstaller, compiles the installer with Inno Setup, and attaches both the versioned and the stable `MadDrop-Setup.exe` to the release.
 
 ## Network notes
 

@@ -34,6 +34,7 @@ from maddrop.core.pairing import pairing_code
 from maddrop.core.protocol import IncomingOffer, PairingRequest, PeerDevice
 from maddrop.core.sender import PairWorker, SendWorker
 from maddrop.resources import asset_path
+from maddrop.ui.animation import fade_in, flash, slide_in
 from maddrop.ui.swipe import FlyingChip, SwipeToSend
 
 APP_STYLE = """
@@ -579,6 +580,8 @@ class MainWindow(QMainWindow):
         self.pair_workers: dict[str, PairWorker] = {}
         self.transfer_rows: dict[str, TransferRow] = {}
         self._secret_buffer = ""
+        self._seen_devices: set[str] = set()
+        self._intro_played = False
 
         self.setWindowTitle("MadDrop")
         self.setWindowIcon(QIcon(str(asset_path("maddrop.ico"))))
@@ -799,6 +802,7 @@ class MainWindow(QMainWindow):
 
     def _set_network_status(self, status: str) -> None:
         self.network_status.setText(status)
+        flash(self.network_status)
 
     def _create_transfer_row(
         self, transfer_id: str, title: str, direction: str
@@ -810,6 +814,7 @@ class MainWindow(QMainWindow):
         self.transfer_rows[transfer_id] = row
         self.history_empty.hide()
         self.history_rows.insertWidget(0, row)
+        slide_in(row)
         while len(self.transfer_rows) > 5:
             oldest_id = next(iter(self.transfer_rows))
             if oldest_id == transfer_id:
@@ -836,12 +841,18 @@ class MainWindow(QMainWindow):
         )
         self.empty_devices.setVisible(not peers)
         self.device_scroll.setVisible(bool(peers))
+        arrivals = [
+            peer.device_id for peer in peers if peer.device_id not in self._seen_devices
+        ]
         for peer in peers:
             row = DeviceRow(peer, peer.device_id == self.selected_device_id)
             row.selected.connect(self._select_device)
             row.pair_requested.connect(self._pair_device)
             self.device_rows[peer.device_id] = row
             self.device_list_layout.addWidget(row)
+            if peer.device_id in arrivals:
+                fade_in(row, 240, min(arrivals.index(peer.device_id), 5) * 50)
+        self._seen_devices.update(self.devices)
         self.device_list_layout.addStretch()
         if self.selected_device_id:
             self.selected_target.setText(self.devices[self.selected_device_id].name)
@@ -1141,6 +1152,12 @@ class MainWindow(QMainWindow):
         self.download_directory.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.download_directory)))
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._intro_played:
+            self._intro_played = True
+            fade_in(self.centralWidget(), 360)
+
     def keyPressEvent(self, event) -> None:
         text = event.text().lower()
         if text and text.isalpha():
@@ -1161,6 +1178,8 @@ class MainWindow(QMainWindow):
             worker.requestInterruption()
         for worker in self.pair_workers.values():
             worker.requestInterruption()
+        # Accept first: a dead network stack must never keep the window open.
+        event.accept()
         self.service.stop()
         for worker in self.workers.values():
             worker.wait(1200)

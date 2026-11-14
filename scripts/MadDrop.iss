@@ -1,5 +1,5 @@
 #define AppName "MadDrop"
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.0"
 #define SourceDir AddBackslash(SourcePath) + "..\dist\MadDrop"
 #define OutputDir AddBackslash(SourcePath) + "..\dist\installer"
 #define LogoPath AddBackslash(SourcePath) + "..\src\maddrop\assets\maddrop.ico"

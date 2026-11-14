@@ -6,6 +6,7 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 from PySide6.QtCore import QCoreApplication, QObject, Slot
 
@@ -114,6 +115,34 @@ class LocalTransferTests(unittest.TestCase):
             self.assertEqual((output / "sample.txt").read_bytes(), b"keep this existing file")
             self.assertEqual((output / "sample (2).txt").read_bytes(), contents)
             self.assertEqual((output / "image.bin").read_bytes(), b"\x00\x01\x02")
+
+    def test_start_and_stop_stay_responsive_without_a_network(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            service = LanTransferService(
+                device_id="offline-device",
+                display_name="Offline",
+                identity_directory=root / "identity",
+                download_directory=root / "received",
+            )
+
+            with mock.patch(
+                "maddrop.core.network.local_ipv4_address",
+                side_effect=OSError("no network"),
+            ):
+                started = time.monotonic()
+                with self.assertRaises(OSError):
+                    service.start()
+                elapsed = time.monotonic() - started
+
+            # No half-open server may be left behind, and neither starting nor
+            # shutting down may block the interface.
+            self.assertIsNone(service._server)
+            self.assertLess(elapsed, 5.0)
+
+            started = time.monotonic()
+            service.stop()
+            self.assertLess(time.monotonic() - started, 5.0)
 
     def test_pairing_proves_identity_and_remembers_the_device(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

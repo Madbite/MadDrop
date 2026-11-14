@@ -14,7 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import QObject, Signal
 from zeroconf import IPVersion, ServiceBrowser, ServiceInfo, ServiceListener, Zeroconf
@@ -39,6 +39,21 @@ from .protocol import (
 SERVICE_TYPE = "_maddrop._tcp.local."
 CHUNK_SIZE = 256 * 1024
 UPLOAD_ROUTE = re.compile(r"^/v1/transfers/([0-9a-fA-F-]{36})/(\d+)$")
+SHUTDOWN_TIMEOUT = 2.0
+
+
+def _run_bounded(step: Callable[[], None], timeout: float = SHUTDOWN_TIMEOUT) -> None:
+    """Run a teardown step on a daemon thread so a stuck stack cannot freeze the app."""
+
+    def guarded() -> None:
+        try:
+            step()
+        except Exception:
+            pass
+
+    worker = threading.Thread(target=guarded, daemon=True)
+    worker.start()
+    worker.join(timeout)
 
 
 @dataclass
@@ -267,7 +282,11 @@ class LanTransferService(QObject):
     def start(self) -> None:
         if self._server is not None:
             return
+        self._stopping = False
         try:
+            # Resolve the address first: with no network this must fail before a
+            # listening server is left behind to tear down.
+            address = local_ipv4_address()
             self.download_directory.mkdir(parents=True, exist_ok=True)
             self._server = _ThreadingHTTPServer(("0.0.0.0", 0), self)
             self._server.socket = server_tls_context(
@@ -280,7 +299,6 @@ class LanTransferService(QObject):
             )
             self._server_thread.start()
 
-            address = local_ipv4_address()
             self._zeroconf = Zeroconf(ip_version=IPVersion.V4Only)
             self._service_info = self._make_service_info(address)
             self._zeroconf.register_service(self._service_info)
@@ -318,8 +336,11 @@ class LanTransferService(QObject):
             return
         self.display_name = name
         if self._zeroconf is not None and self._service_info is not None:
+            try:
+                address = local_ipv4_address()
+            except OSError:
+                return
             old = self._service_info
-            address = local_ipv4_address()
             self._service_info = self._make_service_info(address)
             try:
                 self._zeroconf.unregister_service(old)
@@ -662,8 +683,10 @@ class LanTransferService(QObject):
             self._sessions.pop(key, None)
 
     def stop(self) -> None:
-        self._stopping = True
         with self._lock:
+            if self._stopping:
+                return
+            self._stopping = True
             for offer in self._pending.values():
                 offer.accepted = False
                 offer.decision_event.set()
@@ -671,28 +694,19 @@ class LanTransferService(QObject):
                 request.accepted = False
                 request.decision_event.set()
 
-        if self._browser is not None:
-            try:
-                self._browser.cancel()
-            except Exception:
-                pass
-            self._browser = None
-        if self._zeroconf is not None:
-            if self._service_info is not None:
-                try:
-                    self._zeroconf.unregister_service(self._service_info)
-                except Exception:
-                    pass
-            try:
-                self._zeroconf.close()
-            except Exception:
-                pass
-            self._zeroconf = None
-        if self._server is not None:
-            try:
-                if self._server_thread is not None and self._server_thread.is_alive():
-                    self._server.shutdown()
-                self._server.server_close()
-            except Exception:
-                pass
-            self._server = None
+        browser, self._browser = self._browser, None
+        zeroconf, self._zeroconf = self._zeroconf, None
+        service_info, self._service_info = self._service_info, None
+        server, self._server = self._server, None
+        server_thread, self._server_thread = self._server_thread, None
+
+        if browser is not None:
+            _run_bounded(browser.cancel)
+        if zeroconf is not None:
+            if service_info is not None:
+                _run_bounded(lambda: zeroconf.unregister_service(service_info))
+            _run_bounded(zeroconf.close)
+        if server is not None:
+            if server_thread is not None and server_thread.is_alive():
+                _run_bounded(server.shutdown)
+            _run_bounded(server.server_close)
