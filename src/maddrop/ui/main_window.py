@@ -32,9 +32,18 @@ from PySide6.QtWidgets import (
 from maddrop.core.identity import certificate_der, load_private_key
 from maddrop.core.network import LanTransferService
 from maddrop.core.pairing import pairing_code
+from maddrop.core.profile import (
+    Profile,
+    ProfileStore,
+    available_space,
+    capacity_warning,
+    transfer_limit,
+    upgrade,
+)
 from maddrop.core.protocol import IncomingOffer, PairingRequest, PeerDevice
 from maddrop.core.sender import PairWorker, SendWorker
 from maddrop.resources import asset_path
+from maddrop.ui.account import AccountDialog, UpsellDialog
 from maddrop.ui.animation import fade_in, flash, slide_in
 from maddrop.ui.swipe import FlyingChip, SwipeToSend
 
@@ -489,6 +498,14 @@ class IncomingTransferDialog(QDialog):
         destination.setWordWrap(True)
         layout.addWidget(destination)
 
+        free = available_space(download_directory)
+        warning = capacity_warning(offer.total_bytes, download_directory)
+        if warning:
+            warning_label = QLabel(warning)
+            warning_label.setWordWrap(True)
+            warning_label.setStyleSheet("color: #ff8a80; font-weight: 600;")
+            layout.addWidget(warning_label)
+
         buttons = QHBoxLayout()
         buttons.addStretch()
         reject = QPushButton("Reject")
@@ -496,6 +513,9 @@ class IncomingTransferDialog(QDialog):
         accept.setObjectName("primaryButton")
         reject.clicked.connect(self.reject)
         accept.clicked.connect(self.accept)
+        if free > 0 and offer.total_bytes > free:
+            accept.setEnabled(False)
+            accept.setToolTip("There is not enough free space to save this transfer.")
         buttons.addWidget(reject)
         buttons.addWidget(accept)
         layout.addLayout(buttons)
@@ -586,6 +606,7 @@ class MainWindow(QMainWindow):
         device_id: str,
         display_name: str,
         download_directory: Path,
+        profile_store: ProfileStore | None = None,
     ) -> None:
         super().__init__()
         self.service = service
@@ -602,6 +623,10 @@ class MainWindow(QMainWindow):
         self._secret_buffer = ""
         self._seen_devices: set[str] = set()
         self._intro_played = False
+        self.profile_store = profile_store
+        self.profile: Profile | None = (
+            profile_store.current() if profile_store is not None else None
+        )
 
         self.setWindowTitle("MadDrop")
         self.setWindowIcon(QIcon(str(asset_path("maddrop.ico"))))
@@ -609,6 +634,7 @@ class MainWindow(QMainWindow):
         self.resize(1180, 800)
         self.setStyleSheet(APP_STYLE)
         self._build_ui()
+        self._update_account_button()
 
         self.service.devices_changed.connect(self._update_devices)
         self.service.status_changed.connect(self._set_network_status)
@@ -649,6 +675,12 @@ class MainWindow(QMainWindow):
         tagline.setObjectName("muted")
         header.addWidget(tagline)
         header.addStretch()
+
+        self.account_button = QPushButton("Sign in")
+        self.account_button.setObjectName("quietButton")
+        self.account_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.account_button.clicked.connect(self._open_account)
+        header.addWidget(self.account_button)
 
         self.network_status = QPushButton("Starting local discovery…")
         self.network_status.setObjectName("statusPill")
@@ -958,11 +990,24 @@ class MainWindow(QMainWindow):
                 "it. Pair again before sending files.",
             )
             return
-        self._play_send_animation(peer)
         paths = [
             Path(self.file_list.item(i).data(Qt.ItemDataRole.UserRole))
             for i in range(self.file_list.count())
         ]
+        total = 0
+        for path in paths:
+            try:
+                total += path.stat().st_size
+            except OSError:
+                continue
+        limit = transfer_limit(self.profile)
+        if total > limit:
+            self._offer_premium(
+                f"This transfer is {format_bytes(total)}. Free accounts are "
+                f"limited to {format_bytes(limit)} per transfer."
+            )
+            return
+        self._play_send_animation(peer)
         transfer_id = str(uuid.uuid4())
         row = self._create_transfer_row(transfer_id, f"To {peer.name}", "Outgoing")
         row.set_status("Waiting for acceptance", "Waiting for the recipient to approve")
@@ -1089,6 +1134,40 @@ class MainWindow(QMainWindow):
         if row is not None:
             row.set_status("Failed", message)
         self.statusBar().showMessage(message, 7000)
+
+    def _update_account_button(self) -> None:
+        if self.profile is None:
+            self.account_button.setText("Sign in")
+            self.account_button.setToolTip("Create a local MadDrop account")
+        else:
+            suffix = " · Premium" if self.profile.is_premium else ""
+            self.account_button.setText(f"{self.profile.username}{suffix}")
+            self.account_button.setToolTip(self.profile.email)
+
+    def _open_account(self) -> None:
+        dialog = AccountDialog(self, self.profile)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        profile = dialog.profile
+        if profile is None:
+            return
+        if self.profile_store is not None:
+            profile = self.profile_store.save(profile)
+        self.profile = profile
+        self._update_account_button()
+        # Registering is the natural moment to ask about Premium.
+        if not profile.is_premium:
+            self._offer_premium()
+
+    def _offer_premium(self, reason: str = "") -> None:
+        dialog = UpsellDialog(self, reason)
+        dialog.exec()
+        if dialog.premium_enabled and self.profile is not None:
+            upgraded = upgrade(self.profile)
+            if self.profile_store is not None:
+                upgraded = self.profile_store.save(upgraded)
+            self.profile = upgraded
+            self._update_account_button()
 
     def _incoming_scanned(
         self, transfer_id: str, name: str, risk: str, reason: str

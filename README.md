@@ -1,6 +1,6 @@
 # MadDrop
 
-MadDrop is a native PySide6 desktop app for discovering nearby devices and sending files directly over a local network. Discovery uses mDNS; file contents travel over a TLS-encrypted connection between the two devices. The recipient must accept each transfer before file data is sent. No account, cloud storage, or external service is used.
+MadDrop is a native PySide6 desktop app for discovering nearby devices and sending files directly over a local network. Discovery uses mDNS; file contents travel over a TLS-encrypted connection between the two devices. The recipient must accept each transfer before file data is sent. No cloud storage or external service is used, and the optional account is stored on this device only.
 
 ## Download
 
@@ -48,6 +48,14 @@ git push origin v0.2.1
 ```
 
 The workflow runs the tests, builds `dist\MadDrop` with PyInstaller, compiles the installer with Inno Setup, and attaches both the versioned and the stable `MadDrop-Setup.exe` to the release.
+
+## Accounts and Premium
+
+An account is optional and local: a username and an email address saved to `profile.json` next to the device identity. There is no server, no password, and no verification — nothing leaves the device.
+
+Registering shows the Premium prompt. Premium is **$3.99/month with the first month at $1**, and it removes the free plan's **4 GB per-transfer cap** so a batch may use the full 50 GB protocol maximum. No payment provider is connected in this build: choosing Premium switches the plan on for the local device and says so plainly, without pretending a charge happened.
+
+Before a transfer starts, the receive folder's free space is compared with the total size. If the files will not fit, the accept button is disabled and the reason is shown; if they will leave almost no space, a warning appears but the transfer is still allowed.
 
 ## File checks
 

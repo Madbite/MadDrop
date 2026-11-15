@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from maddrop.core.identity import app_data_directory
 from maddrop.core.network import LanTransferService
+from maddrop.core.profile import ProfileStore
 from maddrop.resources import asset_path
 from maddrop.ui.main_window import MainWindow
 
@@ -56,6 +57,7 @@ def main() -> int:
         device_id=device_id,
         display_name=display_name,
         download_directory=download_directory,
+        profile_store=ProfileStore(app_data_directory() / "profile.json"),
     )
     window.show()
     window.start_network()
