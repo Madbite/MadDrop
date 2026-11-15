@@ -339,7 +339,7 @@ class DeviceRow(QFrame):
         details.addWidget(subtitle)
         layout.addLayout(details, 1)
 
-        if not peer.paired or peer.identity_changed:
+        if (not peer.paired or peer.identity_changed) and peer.can_pair:
             pair_button = QPushButton("Pair")
             pair_button.setObjectName("quietButton")
             pair_button.setMinimumWidth(56)
@@ -357,7 +357,11 @@ class DeviceRow(QFrame):
     def _status_text(self) -> str:
         if self.peer.identity_changed:
             return "Identity changed — pair again"
-        return "Paired" if self.peer.paired else "Not paired"
+        if self.peer.paired:
+            return "Paired"
+        if not self.peer.can_pair:
+            return "Older MadDrop — update to pair"
+        return "Not paired"
 
     def set_selected(self, selected: bool) -> None:
         self.setProperty("selected", selected)
@@ -1072,6 +1076,15 @@ class MainWindow(QMainWindow):
     def _pair_device(self, device_id: str) -> None:
         peer = self.devices.get(device_id)
         if peer is None:
+            return
+        if not peer.can_pair:
+            QMessageBox.information(
+                self,
+                "Older MadDrop on that device",
+                "That device is running an older version of MadDrop that cannot "
+                "pair. Update MadDrop on it to use the 3-digit code; until then "
+                "you can still send files, but the device cannot be verified.",
+            )
             return
         try:
             certificate = certificate_der(self.service.certificate_path)

@@ -8,6 +8,7 @@ from maddrop.core.protocol import (
     MAX_FILE_BYTES,
     PROTOCOL_VERSION,
     sanitize_filename,
+    supports_pairing,
     unique_destination,
     validate_offer,
 )
@@ -47,6 +48,16 @@ class ProtocolTests(unittest.TestCase):
             result = unique_destination(root, "../report.txt")
             self.assertEqual(result.parent, root.resolve())
             self.assertEqual(result.name, "report (2).txt")
+
+
+class CapabilityTests(unittest.TestCase):
+    def test_only_devices_that_advertise_pairing_can_pair(self) -> None:
+        self.assertTrue(supports_pairing({b"caps": b"pair"}))
+        self.assertTrue(supports_pairing({b"caps": b"pair,other"}))
+        self.assertFalse(supports_pairing({b"caps": b"other"}))
+        # A build from before 0.2 sends no capabilities at all.
+        self.assertFalse(supports_pairing({b"id": b"device-1"}))
+        self.assertFalse(supports_pairing({b"caps": None}))
 
 
 if __name__ == "__main__":

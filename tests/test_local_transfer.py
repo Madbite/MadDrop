@@ -18,7 +18,7 @@ from maddrop.core.identity import (
 )
 from maddrop.core.network import LanTransferService, _ThreadingHTTPServer
 from maddrop.core.pairing import pairing_code
-from maddrop.core.protocol import PeerDevice
+from maddrop.core.protocol import PeerDevice, supports_pairing
 from maddrop.core.sender import PairWorker, SendWorker
 
 
@@ -115,6 +115,19 @@ class LocalTransferTests(unittest.TestCase):
             self.assertEqual((output / "sample.txt").read_bytes(), b"keep this existing file")
             self.assertEqual((output / "sample (2).txt").read_bytes(), contents)
             self.assertEqual((output / "image.bin").read_bytes(), b"\x00\x01\x02")
+
+    def test_the_service_advertises_the_pairing_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            service = LanTransferService(
+                device_id="advertiser",
+                display_name="Advertiser",
+                identity_directory=root / "identity",
+                download_directory=root / "received",
+            )
+            info = service._make_service_info("192.0.2.55")
+            self.assertEqual(info.properties[b"caps"], b"pair")
+            self.assertTrue(supports_pairing(info.properties))
 
     def test_start_and_stop_stay_responsive_without_a_network(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

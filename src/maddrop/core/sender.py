@@ -260,6 +260,12 @@ class PairWorker(QThread):
                 )
                 response = connection.getresponse()
                 body = read_json_response(response)
+                if response.status == 404:
+                    raise ConnectionError(
+                        "This device is running an older MadDrop that cannot "
+                        "pair. Update MadDrop on that device, or send files "
+                        "without pairing."
+                    )
                 if response.status == 403:
                     raise PermissionError(
                         body.get("error", "The pairing request was declined.")

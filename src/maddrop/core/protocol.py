@@ -38,6 +38,7 @@ class PeerDevice:
     fingerprint: str
     paired: bool = False
     identity_changed: bool = False
+    can_pair: bool = False
 
 
 @dataclass
@@ -79,6 +80,17 @@ class PairingRequest:
     remote_address: str
     decision_event: Event = field(default_factory=Event, repr=False)
     accepted: bool = False
+
+
+PAIR_CAPABILITY = "pair"
+
+
+def supports_pairing(properties: dict[bytes, Any]) -> bool:
+    """Builds before 0.2 advertise no capabilities and have no pairing endpoint."""
+    value = properties.get(b"caps", b"")
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    return PAIR_CAPABILITY in str(value).split(",")
 
 
 def clean_device_name(value: Any, fallback: str = "Nearby device") -> str:

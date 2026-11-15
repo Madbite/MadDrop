@@ -56,6 +56,7 @@ The workflow runs the tests, builds `dist\MadDrop` with PyInstaller, compiles th
 - Transfers are direct between devices. MadDrop does not route or store file contents.
 - Incoming requests show the sender, file names, and total size. Nothing is written until you accept.
 - Pairing shows the same 3-digit code on both devices; compare it, then the device is remembered locally and does not need to be paired again.
+- Devices running a build from before 0.2 can still send and receive files, but they have no pairing support: the device list marks them "Older MadDrop — update to pair" and the 3-digit code stays unavailable until both devices are updated.
 - After you send, a small animation carries each file across to the target device.
 - Received files go to `Downloads\MadDrop` by default. Existing files are never overwritten; duplicate names receive a numbered suffix.
 - Current transfer limits are 30 GB per file and 50 GB per batch.

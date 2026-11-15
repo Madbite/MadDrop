@@ -31,6 +31,7 @@ from .protocol import (
     PeerDevice,
     clean_device_name,
     sanitize_filename,
+    supports_pairing,
     unique_destination,
     validate_offer,
     validate_pair_request,
@@ -326,6 +327,7 @@ class LanTransferService(QObject):
                 b"platform": platform.system().encode("utf-8"),
                 b"fingerprint": self.fingerprint.encode("ascii"),
                 b"version": b"1",
+                b"caps": b"pair",
             },
             server=f"{host}.local.",
         )
@@ -394,6 +396,7 @@ class LanTransferService(QObject):
             address=address,
             port=info.port,
             fingerprint=fingerprint.lower(),
+            can_pair=supports_pairing(props),
         )
         with self._lock:
             self._devices_by_service[name] = peer
