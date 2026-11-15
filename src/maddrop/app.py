@@ -5,7 +5,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QStandardPaths
+from PySide6.QtCore import QSettings, QStandardPaths, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -60,7 +60,8 @@ def main() -> int:
         profile_store=ProfileStore(app_data_directory() / "profile.json"),
     )
     window.show()
-    window.start_network()
+    # Paint the window first, then bring discovery up off the UI thread.
+    QTimer.singleShot(0, window.start_network)
     return application.exec()
 
 

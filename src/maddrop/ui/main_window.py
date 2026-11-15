@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from functools import partial
@@ -50,20 +51,20 @@ from maddrop.ui.swipe import FlyingChip, SwipeToSend
 APP_STYLE = """
 QMainWindow, QWidget#root {
     background: #080a10;
-    color: #f4f7fc;
+    color: #f8fbff;
 }
 QWidget {
-    color: #f4f7fc;
+    color: #f8fbff;
     font-family: "Segoe UI", "Inter", sans-serif;
     font-size: 10pt;
 }
 QLabel#eyebrow {
-    color: #8290a5;
+    color: #b3c1d6;
     font-size: 9pt;
     font-weight: 600;
 }
 QLabel#muted {
-    color: #97a6bb;
+    color: #c6d2e4;
 }
 QLabel#headline {
     font-size: 26pt;
@@ -144,7 +145,7 @@ QPushButton:pressed {
     background: #121a27;
 }
 QPushButton:disabled {
-    color: #6e7b8e;
+    color: #97a5b9;
     background: #141b26;
     border-color: #202938;
 }
@@ -159,14 +160,14 @@ QPushButton#primaryButton:hover {
     border-color: #2182ff;
 }
 QPushButton#primaryButton:disabled {
-    color: #8d9db4;
+    color: #bccadd;
     background: #1a2b43;
     border-color: #1a2b43;
 }
 QPushButton#quietButton {
     background: transparent;
     border-color: transparent;
-    color: #bdc9d9;
+    color: #d7e1f0;
 }
 QPushButton#quietButton:hover {
     background: #151e2b;
@@ -273,8 +274,8 @@ class DropZone(QFrame):
         self.setAcceptDrops(True)
         self.setMinimumHeight(165)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(7)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(8)
         layout.addStretch()
         self.title = QLabel("Drop files here")
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -325,10 +326,10 @@ class DeviceRow(QFrame):
         self.setObjectName("deviceRow")
         self.setProperty("selected", is_selected)
         self.setProperty("paired", peer.paired)
-        self.setMinimumHeight(78)
+        self.setMinimumHeight(84)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(12)
 
         icon = QLabel()
         icon.setObjectName("deviceIcon")
@@ -395,8 +396,8 @@ class TransferRow(QFrame):
         super().__init__()
         self.setObjectName("transferRow")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
 
         top = QHBoxLayout()
         self.title_label = QLabel(title)
@@ -469,8 +470,8 @@ class IncomingTransferDialog(QDialog):
         self.setMinimumWidth(460)
         self.setModal(True)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(26, 24, 26, 22)
+        layout.setSpacing(14)
 
         title = QLabel(f"{offer.sender_name} wants to send files")
         title.setStyleSheet("font-size: 15pt; font-weight: 700;")
@@ -535,8 +536,8 @@ class PairingDialog(QDialog):
         self._finished = False
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(26, 24, 26, 22)
+        layout.setSpacing(14)
 
         title = QLabel(
             f"Pair with {device_name}?"
@@ -599,6 +600,8 @@ class PairingDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
+    network_failed = Signal(str)
+
     def __init__(
         self,
         service: LanTransferService,
@@ -627,6 +630,8 @@ class MainWindow(QMainWindow):
         self.profile: Profile | None = (
             profile_store.current() if profile_store is not None else None
         )
+        self._network_starting = False
+        self.network_failed.connect(self._network_unavailable)
 
         self.setWindowTitle("MadDrop")
         self.setWindowIcon(QIcon(str(asset_path("maddrop.ico"))))
@@ -650,11 +655,11 @@ class MainWindow(QMainWindow):
         root.setObjectName("root")
         self.setCentralWidget(root)
         outer = QVBoxLayout(root)
-        outer.setContentsMargins(34, 22, 34, 24)
-        outer.setSpacing(20)
+        outer.setContentsMargins(32, 24, 32, 26)
+        outer.setSpacing(24)
 
         header = QHBoxLayout()
-        header.setSpacing(12)
+        header.setSpacing(14)
         logo = QLabel()
         logo.setObjectName("brandLogo")
         logo.setFixedSize(42, 42)
@@ -695,7 +700,7 @@ class MainWindow(QMainWindow):
         outer.addLayout(header)
 
         intro = QVBoxLayout()
-        intro.setSpacing(5)
+        intro.setSpacing(6)
         headline = QLabel("Share files with nearby devices")
         headline.setObjectName("headline")
         subtitle = QLabel(
@@ -707,9 +712,11 @@ class MainWindow(QMainWindow):
         outer.addLayout(intro)
 
         main_row = QHBoxLayout()
-        main_row.setSpacing(16)
-        main_row.addWidget(self._build_send_panel(), 11)
-        main_row.addWidget(self._build_devices_panel(), 9)
+        main_row.setSpacing(18)
+        self.send_panel = self._build_send_panel()
+        self.devices_panel = self._build_devices_panel()
+        main_row.addWidget(self.send_panel, 11)
+        main_row.addWidget(self.devices_panel, 9)
         outer.addLayout(main_row, 1)
 
         self.history_panel = self._build_history_panel()
@@ -719,8 +726,8 @@ class MainWindow(QMainWindow):
         frame = QFrame()
         frame.setObjectName("panel")
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(18, 17, 18, 17)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
         header = QHBoxLayout()
         label = QLabel(title)
         label.setObjectName("sectionTitle")
@@ -798,7 +805,7 @@ class MainWindow(QMainWindow):
         self.device_contents.setStyleSheet("background: transparent;")
         self.device_list_layout = QVBoxLayout(self.device_contents)
         self.device_list_layout.setContentsMargins(0, 0, 0, 0)
-        self.device_list_layout.setSpacing(8)
+        self.device_list_layout.setSpacing(10)
         self.device_scroll.setWidget(self.device_contents)
         layout.addWidget(self.device_scroll, 1)
 
@@ -826,7 +833,7 @@ class MainWindow(QMainWindow):
         self.history_empty.setObjectName("muted")
         layout.addWidget(self.history_empty)
         self.history_rows = QVBoxLayout()
-        self.history_rows.setSpacing(7)
+        self.history_rows.setSpacing(9)
         layout.addLayout(self.history_rows)
         return frame
 
@@ -841,17 +848,33 @@ class MainWindow(QMainWindow):
         return menu
 
     def start_network(self) -> None:
+        """Start discovery off the UI thread so the window stays instant."""
+        if self._network_starting:
+            return
+        self._network_starting = True
+        threading.Thread(
+            target=self._start_network_worker,
+            name="MadDrop network start",
+            daemon=True,
+        ).start()
+
+    def _start_network_worker(self) -> None:
         try:
             self.service.start()
         except Exception as exc:
-            self._set_network_status("Network unavailable — click to retry")
-            QMessageBox.warning(
-                self,
-                "Local network unavailable",
-                f"MadDrop could not start local discovery.\n\n{exc}\n\n"
-                "Check that this device is connected to Wi-Fi and allow MadDrop through "
-                "the private-network firewall.",
-            )
+            self.network_failed.emit(str(exc))
+        finally:
+            self._network_starting = False
+
+    def _network_unavailable(self, message: str) -> None:
+        self._set_network_status("Network unavailable — click to retry")
+        QMessageBox.warning(
+            self,
+            "Local network unavailable",
+            f"MadDrop could not start local discovery.\n\n{message}\n\n"
+            "Check that this device is connected to Wi-Fi and allow MadDrop through "
+            "the private-network firewall.",
+        )
 
     def _set_network_status(self, status: str) -> None:
         self.network_status.setText(status)
@@ -921,6 +944,7 @@ class MainWindow(QMainWindow):
 
     def _add_files(self, paths: list[Path]) -> None:
         known = {self.file_list.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.file_list.count())}
+        added = 0
         for path in paths:
             try:
                 path = path.expanduser().resolve(strict=True)
@@ -933,9 +957,12 @@ class MainWindow(QMainWindow):
                 item.setData(Qt.ItemDataRole.UserRole, str(path))
                 self.file_list.addItem(item)
                 known.add(str(path))
+                added += 1
             except OSError:
                 continue
         count = self.file_list.count()
+        if added:
+            flash(self.drop_zone, 280)
         total = 0
         for i in range(count):
             try:
@@ -1278,7 +1305,11 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         if not self._intro_played:
             self._intro_played = True
-            fade_in(self.centralWidget(), 360)
+            # Staggered entrance: the panels settle in one after another so the
+            # window paints immediately instead of waiting on the slowest one.
+            fade_in(self.send_panel, 280)
+            fade_in(self.devices_panel, 280, 60)
+            fade_in(self.history_panel, 280, 120)
 
     def keyPressEvent(self, event) -> None:
         text = event.text().lower()
@@ -1292,6 +1323,7 @@ class MainWindow(QMainWindow):
     def _reveal_swipe(self) -> None:
         if self.swipe.isHidden():
             self.swipe.show()
+            fade_in(self.swipe, 260)
             self.statusBar().showMessage("Swipe mode unlocked", 4000)
         self._update_send_button()
 
