@@ -116,6 +116,75 @@ class LocalTransferTests(unittest.TestCase):
             self.assertEqual((output / "sample (2).txt").read_bytes(), contents)
             self.assertEqual((output / "image.bin").read_bytes(), b"\x00\x01\x02")
 
+    def test_a_disguised_program_is_flagged_during_a_real_transfer(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output = root / "received"
+            source = root / "source"
+            source.mkdir()
+            (source / "holiday.jpg").write_bytes(
+                b"MZ\x90\x00\x03" + b"\x00" * 300
+            )
+
+            service = LanTransferService(
+                device_id="receiver-device",
+                display_name="Receiver",
+                identity_directory=root / "identity",
+                download_directory=output,
+            )
+            acceptor = _AcceptEveryOffer(service)
+            service.offer_received.connect(acceptor.accept)
+            scanned: list[tuple[str, str, str, str]] = []
+            service.incoming_scanned.connect(
+                lambda *args: scanned.append(args)
+            )
+
+            certificate, key, fingerprint = ensure_tls_identity(root / "identity")
+            server = _ThreadingHTTPServer(("127.0.0.1", 0), service)
+            server.socket = server_tls_context(certificate, key).wrap_socket(
+                server.socket, server_side=True
+            )
+            service._server = server
+            service._server_thread = threading.Thread(
+                target=server.serve_forever, daemon=True
+            )
+            service._server_thread.start()
+
+            peer = PeerDevice(
+                device_id=service.device_id,
+                name=service.display_name,
+                platform="Test",
+                address="127.0.0.1",
+                port=server.server_address[1],
+                fingerprint=fingerprint,
+            )
+            worker = SendWorker(
+                peer, [source / "holiday.jpg"], "Sender", str(uuid.uuid4())
+            )
+            finished: list[tuple[str, bool, str]] = []
+            worker.transfer_done.connect(
+                lambda transfer_id, success, message: finished.append(
+                    (transfer_id, success, message)
+                )
+            )
+            worker.start()
+            deadline = time.monotonic() + 30
+            while worker.isRunning() and time.monotonic() < deadline:
+                self.application.processEvents()
+                time.sleep(0.01)
+            worker.wait(1000)
+            self.application.processEvents()
+            service.stop()
+
+            self.assertTrue(finished and finished[0][1], finished)
+            self.assertEqual(len(scanned), 1, scanned)
+            _session, name, risk, reason = scanned[0]
+            self.assertEqual(name, "holiday.jpg")
+            self.assertEqual(risk, "dangerous")
+            self.assertIn("named like a document", reason)
+            # The file is reported, never removed.
+            self.assertTrue((output / "holiday.jpg").is_file())
+
     def test_the_service_advertises_the_pairing_capability(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

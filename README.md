@@ -49,6 +49,24 @@ git push origin v0.2.1
 
 The workflow runs the tests, builds `dist\MadDrop` with PyInstaller, compiles the installer with Inno Setup, and attaches both the versioned and the stable `MadDrop-Setup.exe` to the release.
 
+## File checks
+
+Every incoming file is inspected on the receiving device before it is handed over, and the result is shown under the transfer in **Recent transfers**.
+
+The check never leaves the device and never uploads a file anywhere. It reads only the first 1 MiB and the last 64 KiB, so a large transfer is not re-read, and it looks for:
+
+- a program wearing a document's name (a `.jpg` that starts with `MZ`)
+- double extensions such as `statement.pdf.exe`
+- Office documents carrying macros
+- PDFs that run embedded script or launch an action
+- archives, which are reported as not inspected
+
+The application is named `.exe`, `.ps1`, `.bat` and similar, so it is flagged rather than silently trusted.
+
+On Windows the check also asks the **Microsoft Defender already installed on the machine** to scan the finished file. That engine keeps its own signature database current and runs locally; MadDrop only reads its exit code. If Defender is missing, the built-in checks still run.
+
+A flagged file is reported, never deleted, so nothing is lost by accident.
+
 ## Network notes
 
 - Both devices must have MadDrop open and be on the same Wi-Fi or wired LAN.
@@ -64,6 +82,7 @@ The workflow runs the tests, builds `dist\MadDrop` with PyInstaller, compiles th
 ## Project layout
 
 - `src/maddrop/core/identity.py` — local TLS device identity and network address selection
+- `src/maddrop/core/inspection.py` — offline checks on incoming files
 - `src/maddrop/core/pairing.py` — 3-digit pairing codes, key-possession proof, trusted devices
 - `src/maddrop/core/network.py` — mDNS discovery, incoming request handling, and safe file writes
 - `src/maddrop/core/protocol.py` — protocol validation and filename safety

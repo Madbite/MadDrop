@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, Signal
 from zeroconf import IPVersion, ServiceBrowser, ServiceInfo, ServiceListener, Zeroconf
 
 from .identity import ensure_tls_identity, local_ipv4_address, server_tls_context
+from .inspection import inspect_file
 from .pairing import TrustStore, pairing_code, verify_pairing_proof
 from .protocol import (
     MAX_OFFER_BYTES,
@@ -244,6 +245,7 @@ class LanTransferService(QObject):
     incoming_progress = Signal(str, str, int, int, int, int, float, int)
     incoming_complete = Signal(str, object, str)
     incoming_failed = Signal(str, str)
+    incoming_scanned = Signal(str, str, str, str)
 
     def __init__(
         self,
@@ -606,7 +608,17 @@ class LanTransferService(QObject):
                 destination.flush()
                 os.fsync(destination.fileno())
 
+            # Inspect the finished file on this device before it is handed over.
+            inspection = inspect_file(temp_path, item.name)
+
             final_path = self._commit_without_overwrite(temp_path, item.name, download_dir)
+            if inspection.flagged:
+                self.incoming_scanned.emit(
+                    session.session_id,
+                    item.name,
+                    inspection.risk,
+                    inspection.describe(),
+                )
             with self._lock:
                 active_session = self._sessions.get(session.session_id)
                 if active_session is None:

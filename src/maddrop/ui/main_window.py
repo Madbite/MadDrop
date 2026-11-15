@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from functools import partial
 from pathlib import Path
@@ -402,12 +403,20 @@ class TransferRow(QFrame):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
+        self.progress.hide()
         layout.addWidget(self.progress)
+        self._created = time.monotonic()
 
         self.detail_label = QLabel("Preparing transfer")
         self.detail_label.setObjectName("muted")
         self.detail_label.setStyleSheet("font-size: 9pt;")
         layout.addWidget(self.detail_label)
+
+        self.note_label = QLabel("")
+        self.note_label.setWordWrap(True)
+        self.note_label.setStyleSheet("font-size: 9pt; color: #ffb454;")
+        self.note_label.hide()
+        layout.addWidget(self.note_label)
 
     def set_status(self, status: str, detail: str | None = None) -> None:
         self.status_label.setText(status)
@@ -427,7 +436,10 @@ class TransferRow(QFrame):
         eta: int,
         detail: str | None = None,
     ) -> None:
-        self.progress.show()
+        # Local transfers usually finish instantly, so the bar only appears
+        # when a transfer is genuinely still running after half a second.
+        if current < total and time.monotonic() - self._created > 0.5:
+            self.progress.show()
         self.progress.setValue(round(100 * current / total) if total else 100)
         text = f"{format_bytes(current)} of {format_bytes(total)}"
         if speed > 0:
@@ -435,6 +447,10 @@ class TransferRow(QFrame):
         if detail:
             text = f"{detail}  ·  {text}"
         self.detail_label.setText(text)
+
+    def add_note(self, text: str) -> None:
+        self.note_label.setText(text)
+        self.note_label.show()
 
 
 class IncomingTransferDialog(QDialog):
@@ -600,6 +616,7 @@ class MainWindow(QMainWindow):
         self.service.incoming_progress.connect(self._update_incoming_progress)
         self.service.incoming_complete.connect(self._incoming_complete)
         self.service.incoming_failed.connect(self._incoming_failed)
+        self.service.incoming_scanned.connect(self._incoming_scanned)
         self.service.pair_requested.connect(self._handle_pair_request)
 
     def _build_ui(self) -> None:
@@ -1072,6 +1089,19 @@ class MainWindow(QMainWindow):
         if row is not None:
             row.set_status("Failed", message)
         self.statusBar().showMessage(message, 7000)
+
+    def _incoming_scanned(
+        self, transfer_id: str, name: str, risk: str, reason: str
+    ) -> None:
+        row = self.transfer_rows.get(transfer_id)
+        if row is None:
+            return
+        label = "High risk" if risk == "dangerous" else "Check this file"
+        row.add_note(f"{label}: {name} — {reason}")
+        if risk == "dangerous":
+            self.statusBar().showMessage(
+                f"{name} was flagged by MadDrop's file check", 9000
+            )
 
     def _pair_device(self, device_id: str) -> None:
         peer = self.devices.get(device_id)
